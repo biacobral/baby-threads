@@ -7,6 +7,7 @@ Projeto desenvolvido para a disciplina de **Sistemas Operacionais**, com foco no
 ## Sobre o Projeto
 
 Matéria: Sistemas Operacionais(C12)
+
 Professor: Jonas
 
 O objetivo do projeto é demonstrar o comportamento (e o **caos**) do uso de múltiplas **threads** disputando recursos em tempo real sem ou com sincronização.
