@@ -38,15 +38,13 @@ Não é necessária a instalação de bibliotecas externas (utiliza apenas os m�
 ### Executando o projeto:
 
 ```bash
-python main.py <NUM_BEBES> <NUM_CUIDADORAS> <TEMPO_SIMULACAO>
-
+python baby-threads.py <NUM_BEBES> <NUM_CUIDADORAS> <TEMPO_SIMULACAO>
 ```
 
 **Exemplo:**
 
 ```bash
-python main.py 5 2 15
-
+python baby-threads.py 5 2 15
 ```
 
 *(Inicia 5 bebês, 2 cuidadoras rodando por 15 segundos).*
