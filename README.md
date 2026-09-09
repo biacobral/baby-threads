@@ -49,6 +49,24 @@ python baby-threads.py 5 2 15
 
 *(Inicia 5 bebês, 2 cuidadoras rodando por 15 segundos).*
 
+### Executando com interface gráfica:
+
+O arquivo `baby-threads-gui.py` abre a mesma simulação em uma janela (Tkinter, nativo do Python), com os mesmos parâmetros:
+
+```bash
+python baby-threads-gui.py 5 2 15
+```
+
+A interface **não altera a simulação**: ela importa o `baby-threads.py`, dispara as mesmas threads de bebês e cuidadoras e apenas substitui a thread de renderização em texto. A tela mostra:
+
+* **Fila compartilhada:** fichas coloridas por tipo de necessidade, na ordem em que serão atendidas.
+* **Bebês:** um cartão por thread, com cor por estado (dormindo, brincando, chorando, sendo atendido) e uma barra de espera que fica vermelha ao ultrapassar o limite de starvation.
+* **Cuidadoras:** estado atual e qual bebê está sendo atendido.
+* **Problemas de concorrência:** contadores de condições de corrida, leituras inconsistentes e starvations, que piscam a cada nova ocorrência.
+* **Log de eventos:** linha do tempo dos atendimentos e dos conflitos detectados.
+
+Ao final do tempo, o relatório completo é exibido em uma janela e também impresso no terminal.
+
 ---
 
 ## Integrantes do Grupo
