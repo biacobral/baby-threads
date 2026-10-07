@@ -15,13 +15,16 @@ import sys
 import threading
 import time
 
+from escalonamento import NECESSIDADES, POLITICAS, criar_fila
+
 # ==============================================================================
 # VALIDAÇÃO DOS ARGUMENTOS DE LINHA DE COMANDO
 # ==============================================================================
 def exibir_ajuda():
     print("\nUso incorreto dos parâmetros.")
-    print("Siga o formato: python baby-threads.py <NUM_BEBES> <NUM_CUIDADORAS> <TEMPO_SIMULACAO>")
-    print("Exemplo: python baby-threads.py 5 2 15\n")
+    print("Siga o formato: python baby-threads.py <NUM_BEBES> <NUM_CUIDADORAS> <TEMPO_SIMULACAO> [POLITICA]")
+    print("Politicas: fifo (padrão), sjf, priority")
+    print("Exemplo: python baby-threads.py 5 2 15 priority\n")
     sys.exit(1)
 
 if len(sys.argv) < 4:
@@ -37,23 +40,32 @@ except ValueError:
     print("\nErro: Todos os parâmetros devem ser números inteiros positivos maiores que zero.")
     exibir_ajuda()
 
+politica = sys.argv[4].lower() if len(sys.argv) > 4 else "fifo"
+if politica not in POLITICAS:
+    print(f"\nErro: política '{politica}' desconhecida.")
+    exibir_ajuda()
+
 # ==============================================================================
 # RECURSOS COMPARTILHADOS (ESTRITAMENTE SEM LOCKS / SEMÁFOROS)
 # ==============================================================================
-# Lista compartilhada de atendimento (fila de requisições sujeita a race conditions)
-fila = []
+# Fila compartilhada de atendimento; a política escolhida define quem é atendido primeiro
+fila = criar_fila(politica)
 
 # Histórico compartilhado de atendimentos concluídos (bebe_id, tipo, tempo_espera)
 atendimentos = []
 
 # Tipos de necessidades suportadas pelo berçário
-TIPOS_NECESSIDADES = ["fome", "fralda", "sono", "higiene"]
+TIPOS_NECESSIDADES = list(NECESSIDADES)
 
 def criar_necessidades(bebe_id):
-    """Gera um chamado com necessidade aleatória e timestamp de criação."""
+    """Gera um chamado com necessidade aleatória, prioridade e duração do atendimento."""
+    tipo = random.choice(TIPOS_NECESSIDADES)
+    info = NECESSIDADES[tipo]
     return {
         "bebe_id": bebe_id,
-        "tipo": random.choice(TIPOS_NECESSIDADES),
+        "tipo": tipo,
+        "prioridade": info["prioridade"],
+        "duracao": random.uniform(*info["duracao"]),
         "timestamp": time.time(),
     }
 
@@ -140,8 +152,7 @@ def rotina_bebe(bebe_id):
         # Incremento concorrente no contador global (suscetível a lost updates)
         metricas["total_pedidos_gerados"] += 1
 
-        # Insere na fila compartilhada sem trava
-        fila.append(pedido)
+        fila.put(pedido)
 
         # Espera ser atendido antes de gerar outra necessidade
         sofreu_starvation = False
@@ -166,12 +177,9 @@ def rotina_bebe(bebe_id):
 def rotina_cuidadora(cuidadora_id):
     """
     Simula o trabalho de uma cuidadora:
-    1. Monitora a fila compartilhada em tempo real;
-    2. Quando detecta itens, tenta retirar o primeiro da fila (pop(0));
-    3. Sem travas, ocorre a condição de corrida clássica (Check-Then-Act):
-       duas cuidadoras veem len(fila) > 0, mas a segunda toma IndexError!
-    4. Atende a necessidade do bebê por um intervalo de 0.5s a 1.5s;
-    5. Libera o bebê e adiciona o evento ao histórico de atendimentos.
+    1. Espera a fila liberar um pedido (quem sai primeiro depende da política);
+    2. Atende a necessidade do bebê pelo tempo previsto no pedido;
+    3. Libera o bebê e adiciona o evento ao histórico de atendimentos.
     """
     global rodando
 
@@ -180,47 +188,30 @@ def rotina_cuidadora(cuidadora_id):
         status_cuidadoras[cuidadora_id]["atendendo_bebe"] = None
         status_cuidadoras[cuidadora_id]["necessidade_atual"] = None
 
-        if len(fila) > 0:
-            # JANELA CRÍTICA DA CONDIÇÃO DE CORRIDA:
-            # Uma cuidadora vê que há pedidos e caminha até o berço (pequeno delay).
-            # Sem sincronização, outra cuidadora pode retirar o mesmo item nesse intervalo!
-            time.sleep(random.uniform(0.01, 0.04))
+        pedido = fila.get(timeout=0.1)
+        if pedido is None:
+            continue
 
-            try:
-                # Disputa direta pelo primeiro elemento da fila sem locks
-                pedido = fila.pop(0)
-            except IndexError:
-                # Outra cuidadora foi mais rápida e esvaziou a fila.
-                metricas["conflitos_fila_pop"] += 1
-                continue
-            except Exception:
-                metricas["conflitos_fila_pop"] += 1
-                continue
+        bebe_id = pedido["bebe_id"]
+        necessidade = pedido["tipo"]
+        tempo_espera = time.time() - pedido["timestamp"]
 
-            bebe_id = pedido["bebe_id"]
-            necessidade = pedido["tipo"]
-            tempo_espera = time.time() - pedido["timestamp"]
+        # Atualiza status sem bloqueio
+        status_cuidadoras[cuidadora_id]["estado"] = "ATENDENDO"
+        status_cuidadoras[cuidadora_id]["atendendo_bebe"] = bebe_id
+        status_cuidadoras[cuidadora_id]["necessidade_atual"] = necessidade
 
-            # Atualiza status sem bloqueio
-            status_cuidadoras[cuidadora_id]["estado"] = "ATENDENDO"
-            status_cuidadoras[cuidadora_id]["atendendo_bebe"] = bebe_id
-            status_cuidadoras[cuidadora_id]["necessidade_atual"] = necessidade
+        # Marca o bebê como atendido na visão global
+        status_bebes[bebe_id]["estado"] = "SENDO_ATENDIDO"
 
-            # Marca o bebê como atendido na visão global
-            status_bebes[bebe_id]["estado"] = "SENDO_ATENDIDO"
+        time.sleep(pedido["duracao"])
 
-            # Tempo gasto cuidando do bebê (0.5s a 1.5s)
-            tempo_cuidado = random.uniform(0.5, 1.5)
-            time.sleep(tempo_cuidado)
-
-            # Conclusão do atendimento e gravação concorrente no histórico
-            atendimentos.append((bebe_id, necessidade, tempo_espera))
-            status_cuidadoras[cuidadora_id]["total_atendidos"] += 1
-            metricas["total_pedidos_atendidos"] += 1
-            status_bebes[bebe_id]["total_atendidos"] += 1
-            status_bebes[bebe_id]["atendido_evento"] = True
-        else:
-            time.sleep(0.05)
+        # Conclusão do atendimento e gravação concorrente no histórico
+        atendimentos.append((bebe_id, necessidade, tempo_espera))
+        status_cuidadoras[cuidadora_id]["total_atendidos"] += 1
+        metricas["total_pedidos_atendidos"] += 1
+        status_bebes[bebe_id]["total_atendidos"] += 1
+        status_bebes[bebe_id]["atendido_evento"] = True
 
 
 # ==============================================================================
