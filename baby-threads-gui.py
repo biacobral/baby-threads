@@ -14,10 +14,9 @@ renderização em texto (TUI) por uma cena gráfica:
     para o berço quando o atendimento termina;
   - Log de eventos e problemas de concorrência ficam num painel lateral.
 
-Assim como a TUI original, a interface lê as estruturas compartilhadas SEM locks.
-Quando uma leitura falha por causa de uma escrita concorrente, o erro é contado
-na mesma métrica `erros_concorrencia_tui`, para que a interface também seja uma
-"vítima" visível das condições de corrida.
+Assim como na TUI, a interface lê as estruturas compartilhadas com garantia
+de exclusão mútua (lock_status e lock_metricas), demonstrando a eficácia dos
+dispositivos de sincronização na eliminação de condições de corrida e leituras inconsistentes.
 
 Uso:
     python baby-threads-gui.py <NUM_BEBES> <NUM_CUIDADORAS> <TEMPO_SIMULACAO>
@@ -111,7 +110,7 @@ def rrect(cv, x1, y1, x2, y2, r=10, **kw):
 class BabyThreadsApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Baby Threads - Berçário Virtual Concorrente [SEM SINCRONIZAÇÃO]")
+        self.root.title("Baby Threads - Berçário Virtual Concorrente [MODO SINCRONIZADO]")
         self.root.configure(bg=COR_FUNDO)
         self.root.minsize(1100, 700)
         self.root.protocol("WM_DELETE_WINDOW", self.fechar)
@@ -143,7 +142,7 @@ class BabyThreadsApp:
 
         tk.Label(topo, text="BABY THREADS", font=(FONTE, 17, "bold"),
                  fg=COR_TEXTO, bg=COR_FUNDO).pack(side="left")
-        tk.Label(topo, text="  berçário virtual concorrente  ·  modo SEM sincronização  ·  "
+        tk.Label(topo, text="  berçário virtual concorrente  ·  modo SINCRONIZADO  ·  "
                             f"{sim.num_bebes} bebês, {sim.num_cuidadoras} cuidadoras, "
                             f"{sim.num_bebes + sim.num_cuidadoras + 1} threads",
                  font=(FONTE, 10), fg=COR_TEXTO_SUAVE, bg=COR_FUNDO).pack(side="left", pady=(5, 0))
@@ -184,10 +183,10 @@ class BabyThreadsApp:
         self.log.tag_configure("ok", foreground="#8FD3A8")
         self.log.tag_configure("info", foreground="#9AA5B1")
 
-        # ---- problemas de concorrência, discretos, abaixo do log ----
+        # ---- monitoramento de concorrência e sincronização ----
         painel_m = tk.Frame(lateral, bg=COR_PAINEL, highlightbackground=COR_BORDA, highlightthickness=1)
         painel_m.pack(fill="x", pady=(8, 0))
-        tk.Label(painel_m, text="PROBLEMAS DE CONCORRÊNCIA", font=(FONTE, 9, "bold"), fg=COR_TEXTO_SUAVE,
+        tk.Label(painel_m, text="MONITORAMENTO DE CONCORRÊNCIA", font=(FONTE, 9, "bold"), fg=COR_TEXTO_SUAVE,
                  bg=COR_PAINEL, anchor="w").pack(fill="x", padx=10, pady=(6, 2))
 
         self.metric_labels = {}
@@ -297,18 +296,19 @@ class BabyThreadsApp:
         self.root.after(INTERVALO_FRAME_MS, self.quadro)
 
     def quadro(self):
-        """Um quadro de animação: lê o estado compartilhado (sem lock) e redesenha."""
+        """Um quadro de animação: lê o estado compartilhado sob lock e redesenha."""
         try:
             if not self.layout_pronto:
                 self._calcular_layout()
             decorrido = time.time() - sim.tempo_inicio
             self.lbl_tempo.configure(text=f"{decorrido:5.1f}s / {sim.tempo_simulacao}s")
             self.barra_tempo["value"] = min(decorrido, sim.tempo_simulacao)
-            self._detectar_eventos()
-            self._desenhar()
+            with sim.lock_status:
+                self._detectar_eventos()
+                self._desenhar()
         except Exception:
-            # Mesma semântica da TUI original: leitura concorrente inconsistente
-            sim.metricas["erros_concorrencia_tui"] += 1
+            with sim.lock_metricas:
+                sim.metricas["erros_concorrencia_tui"] += 1
 
         if not self.encerrando:
             if time.time() - sim.tempo_inicio >= sim.tempo_simulacao:
@@ -320,7 +320,8 @@ class BabyThreadsApp:
     # DETECÇÃO DE EVENTOS (log, banners, métricas)
     # --------------------------------------------------------------------------
     def _detectar_eventos(self):
-        m = sim.metricas
+        with sim.lock_metricas:
+            m = dict(sim.metricas)
         limite = sim.LIMITE_STARVATION
 
         for j in range(sim.num_cuidadoras):
@@ -540,6 +541,9 @@ class BabyThreadsApp:
             return
         self.encerrando = True
         sim.rodando = False
+        sim.fila.notify_all()
+        for ev in sim.eventos_atendido.values():
+            ev.set()
         self.registrar("Tempo esgotado. Encerrando threads...", "info")
         self.lbl_tempo.configure(text=f"{sim.tempo_simulacao}s / {sim.tempo_simulacao}s  ✔")
         self.root.after(300, self.mostrar_relatorio)
@@ -555,8 +559,9 @@ class BabyThreadsApp:
         print(relatorio, flush=True)  # mantém o relatório também no terminal, como no original
 
         try:
-            self._detectar_eventos()
-            self._desenhar()
+            with sim.lock_status:
+                self._detectar_eventos()
+                self._desenhar()
         except Exception:
             pass
 
@@ -579,6 +584,9 @@ class BabyThreadsApp:
 
     def fechar(self):
         sim.rodando = False
+        sim.fila.notify_all()
+        for ev in sim.eventos_atendido.values():
+            ev.set()
         self.encerrando = True
         self.root.destroy()
 

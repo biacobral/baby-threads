@@ -50,8 +50,13 @@ class Fila:
         with self._cond:
             return sorted(self._itens, key=self.chave)
 
+    def notify_all(self):
+        with self._cond:
+            self._cond.notify_all()
+
     def __len__(self):
-        return len(self._itens)
+        with self._cond:
+            return len(self._itens)
 
     def __iter__(self):
         return iter(self.snapshot())
