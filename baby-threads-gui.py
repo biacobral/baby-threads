@@ -110,7 +110,8 @@ def rrect(cv, x1, y1, x2, y2, r=10, **kw):
 class BabyThreadsApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Baby Threads - Berçário Virtual Concorrente [MODO SINCRONIZADO]")
+        titulo_modo = "[MODO SINCRONIZADO]" if getattr(sim, "sincronizado", True) else "[SEM SINCRONIZAÇÃO]"
+        self.root.title(f"Baby Threads - Berçário Virtual Concorrente {titulo_modo}")
         self.root.configure(bg=COR_FUNDO)
         self.root.minsize(1100, 700)
         self.root.protocol("WM_DELETE_WINDOW", self.fechar)
@@ -140,9 +141,10 @@ class BabyThreadsApp:
         topo = tk.Frame(self.root, bg=COR_FUNDO)
         topo.pack(fill="x", padx=14, pady=(8, 2))
 
+        desc_modo = "modo SINCRONIZADO" if getattr(sim, "sincronizado", True) else "modo SEM sincronização"
         tk.Label(topo, text="BABY THREADS", font=(FONTE, 17, "bold"),
                  fg=COR_TEXTO, bg=COR_FUNDO).pack(side="left")
-        tk.Label(topo, text="  berçário virtual concorrente  ·  modo SINCRONIZADO  ·  "
+        tk.Label(topo, text=f"  berçário virtual concorrente  ·  {desc_modo}  ·  "
                             f"{sim.num_bebes} bebês, {sim.num_cuidadoras} cuidadoras, "
                             f"{sim.num_bebes + sim.num_cuidadoras + 1} threads",
                  font=(FONTE, 10), fg=COR_TEXTO_SUAVE, bg=COR_FUNDO).pack(side="left", pady=(5, 0))
@@ -186,7 +188,8 @@ class BabyThreadsApp:
         # ---- monitoramento de concorrência e sincronização ----
         painel_m = tk.Frame(lateral, bg=COR_PAINEL, highlightbackground=COR_BORDA, highlightthickness=1)
         painel_m.pack(fill="x", pady=(8, 0))
-        tk.Label(painel_m, text="MONITORAMENTO DE CONCORRÊNCIA", font=(FONTE, 9, "bold"), fg=COR_TEXTO_SUAVE,
+        painel_titulo = "MONITORAMENTO DE CONCORRÊNCIA" if getattr(sim, "sincronizado", True) else "PROBLEMAS DE CONCORRÊNCIA"
+        tk.Label(painel_m, text=painel_titulo, font=(FONTE, 9, "bold"), fg=COR_TEXTO_SUAVE,
                  bg=COR_PAINEL, anchor="w").pack(fill="x", padx=10, pady=(6, 2))
 
         self.metric_labels = {}
@@ -296,18 +299,25 @@ class BabyThreadsApp:
         self.root.after(INTERVALO_FRAME_MS, self.quadro)
 
     def quadro(self):
-        """Um quadro de animação: lê o estado compartilhado sob lock e redesenha."""
+        """Um quadro de animação: redesenha a cena (sob lock se no modo sincronizado)."""
         try:
             if not self.layout_pronto:
                 self._calcular_layout()
             decorrido = time.time() - sim.tempo_inicio
             self.lbl_tempo.configure(text=f"{decorrido:5.1f}s / {sim.tempo_simulacao}s")
             self.barra_tempo["value"] = min(decorrido, sim.tempo_simulacao)
-            with sim.lock_status:
+            if getattr(sim, "sincronizado", True):
+                with sim.lock_status:
+                    self._detectar_eventos()
+                    self._desenhar()
+            else:
                 self._detectar_eventos()
                 self._desenhar()
         except Exception:
-            with sim.lock_metricas:
+            if getattr(sim, "sincronizado", True):
+                with sim.lock_metricas:
+                    sim.metricas["erros_concorrencia_tui"] += 1
+            else:
                 sim.metricas["erros_concorrencia_tui"] += 1
 
         if not self.encerrando:
@@ -320,8 +330,11 @@ class BabyThreadsApp:
     # DETECÇÃO DE EVENTOS (log, banners, métricas)
     # --------------------------------------------------------------------------
     def _detectar_eventos(self):
-        with sim.lock_metricas:
-            m = dict(sim.metricas)
+        if getattr(sim, "sincronizado", True):
+            with sim.lock_metricas:
+                m = dict(sim.metricas)
+        else:
+            m = sim.metricas
         limite = sim.LIMITE_STARVATION
 
         for j in range(sim.num_cuidadoras):
@@ -541,9 +554,10 @@ class BabyThreadsApp:
             return
         self.encerrando = True
         sim.rodando = False
-        sim.fila.notify_all()
-        for ev in sim.eventos_atendido.values():
-            ev.set()
+        if getattr(sim, "sincronizado", True):
+            sim.fila.notify_all()
+            for ev in sim.eventos_atendido.values():
+                ev.set()
         self.registrar("Tempo esgotado. Encerrando threads...", "info")
         self.lbl_tempo.configure(text=f"{sim.tempo_simulacao}s / {sim.tempo_simulacao}s  ✔")
         self.root.after(300, self.mostrar_relatorio)
@@ -559,7 +573,11 @@ class BabyThreadsApp:
         print(relatorio, flush=True)  # mantém o relatório também no terminal, como no original
 
         try:
-            with sim.lock_status:
+            if getattr(sim, "sincronizado", True):
+                with sim.lock_status:
+                    self._detectar_eventos()
+                    self._desenhar()
+            else:
                 self._detectar_eventos()
                 self._desenhar()
         except Exception:
@@ -584,9 +602,10 @@ class BabyThreadsApp:
 
     def fechar(self):
         sim.rodando = False
-        sim.fila.notify_all()
-        for ev in sim.eventos_atendido.values():
-            ev.set()
+        if getattr(sim, "sincronizado", True):
+            sim.fila.notify_all()
+            for ev in sim.eventos_atendido.values():
+                ev.set()
         self.encerrando = True
         self.root.destroy()
 

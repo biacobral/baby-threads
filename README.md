@@ -60,23 +60,31 @@ Não é necessária a instalação de bibliotecas externas (utiliza apenas os m�
 ### Executando o projeto:
 
 ```bash
-python baby-threads.py <NUM_BEBES> <NUM_CUIDADORAS> <TEMPO_SIMULACAO>
+python baby-threads.py <NUM_BEBES> <NUM_CUIDADORAS> <TEMPO_SIMULACAO> [POLITICA] [--sem-sync]
 ```
 
-**Exemplo:**
+* **Modo Sincronizado (Padrão):**
+  Executa com todos os mecanismos de sincronização ativos (Locks, Semáforos, Condition e Events):
+  ```bash
+  python baby-threads.py 5 2 15 priority
+  ```
 
-```bash
-python baby-threads.py 5 2 15
-```
-
-*(Inicia 5 bebês, 2 cuidadoras rodando por 15 segundos).*
+* **Modo Sem Sincronização (Comparativo / Caos):**
+  Passe a flag `--sem-sync` (ou `--sem-sincronizacao`) para desativar as travas e evidenciar condições de corrida, *check-then-act* e *lost updates*:
+  ```bash
+  python baby-threads.py 5 2 15 priority --sem-sync
+  ```
 
 ### Executando com interface gráfica:
 
-O arquivo `baby-threads-gui.py` abre a mesma simulação em uma janela (Tkinter, nativo do Python), com os mesmos parâmetros:
+O arquivo `baby-threads-gui.py` abre a simulação em janela (Tkinter), suportando as mesmas opções e flags:
 
 ```bash
-python baby-threads-gui.py 5 2 15
+# Modo sincronizado na interface gráfica
+python baby-threads-gui.py 5 2 15 priority
+
+# Modo sem sincronização na interface gráfica (evidencia piscadas e conflitos)
+python baby-threads-gui.py 5 2 15 priority --sem-sync
 ```
 
 A interface **não altera a simulação**: ela importa o `baby-threads.py`, dispara as mesmas threads de bebês e cuidadoras e apenas substitui a thread de renderização em texto. A tela mostra:
