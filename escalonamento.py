@@ -9,6 +9,7 @@ para decidir qual pedido sai primeiro:
   - priority: prioridade da necessidade, com aging para evitar starvation
 """
 
+import random
 import threading
 import time
 
@@ -26,32 +27,62 @@ INTERVALO_AGING = 1.0
 
 
 class Fila:
-    def __init__(self):
+    def __init__(self, sincronizado=True):
         self._itens = []
+        self._sincronizado = sincronizado
         self._cond = threading.Condition()
 
     def chave(self, pedido):
         return pedido["timestamp"]
 
     def put(self, pedido):
-        with self._cond:
+        if self._sincronizado:
+            with self._cond:
+                self._itens.append(pedido)
+                self._cond.notify()
+        else:
             self._itens.append(pedido)
-            self._cond.notify()
 
     def get(self, timeout=None):
-        with self._cond:
-            if not self._cond.wait_for(lambda: self._itens, timeout):
+        if self._sincronizado:
+            with self._cond:
+                if not self._cond.wait_for(lambda: self._itens, timeout):
+                    return None
+                pedido = min(self._itens, key=self.chave)
+                self._itens.remove(pedido)
+                return pedido
+        else:
+            # Modo sem sincronização: janela de tempo para evidenciar Check-Then-Act
+            if len(self._itens) > 0:
+                time.sleep(random.uniform(0.01, 0.04))
+                try:
+                    pedido = min(self._itens, key=self.chave)
+                    self._itens.remove(pedido)
+                    return pedido
+                except (IndexError, ValueError):
+                    raise IndexError("Conflito de corrida na fila!")
+            else:
+                time.sleep(0.05)
                 return None
-            pedido = min(self._itens, key=self.chave)
-            self._itens.remove(pedido)
-            return pedido
 
     def snapshot(self):
-        with self._cond:
+        if self._sincronizado:
+            with self._cond:
+                return sorted(self._itens, key=self.chave)
+        else:
             return sorted(self._itens, key=self.chave)
 
+    def notify_all(self):
+        if self._sincronizado:
+            with self._cond:
+                self._cond.notify_all()
+
     def __len__(self):
-        return len(self._itens)
+        if self._sincronizado:
+            with self._cond:
+                return len(self._itens)
+        else:
+            return len(self._itens)
 
     def __iter__(self):
         return iter(self.snapshot())
@@ -80,5 +111,5 @@ POLITICAS = {
 }
 
 
-def criar_fila(politica):
-    return POLITICAS[politica]()
+def criar_fila(politica, sincronizado=True):
+    return POLITICAS[politica](sincronizado=sincronizado)

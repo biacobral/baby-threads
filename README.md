@@ -20,14 +20,36 @@ A metáfora utilizada é a de um **Berçário Concorrente**:
 
 ---
 
-## O Caos Programado (Conceitos de S.O. Explorados)
+## O Caos vs. A Ordem (Conceitos de S.O. Explorados)
 
-Este projeto expõe diversos problemas clássicos de concorrência:
+Inicialmente, o projeto foi desenvolvido sem sincronização para evidenciar os problemas clássicos de concorrência:
 
-1. **Condição de Corrida (*Race Conditions*):** Vários bebês tentando alterar a fila compartilhada simultaneamente.
-2. **Seção Crítica:** Bloqueio e liberação de recursos compartilhados (como a fila e o status dos bebês).
-3. **Starvation (Inanição):** Risco de um bebê chorar continuamente e não ser atendido caso a demanda supere a capacidade das cuidadoras.
-4. **Produtor-Consumidor:** A relação direta entre os bebês (produtores de chamados) e as cuidadoras (consumidoras de chamados).
+1. **Condição de Corrida (*Race Conditions*):** Múltiplas threads disputando e alterando estruturas compartilhadas sem controle de acesso.
+2. **Seção Crítica:** Acesso desordenado a recursos compartilhados como a fila de chamados e dicionários de status.
+3. **Leituras Inconsistentes / Sujas:** Threads visualizadoras lendo estados intermediários em plena alteração.
+4. **Atualizações Perdidas (*Lost Updates*):** Contadores globais incrementados concorrentemente sem atomicidade.
+5. **Espera Ocupada (*Busy-Waiting*):** Threads aguardando eventos através de loops com polling.
+
+---
+
+## Dispositivos de Sincronização Implementados
+
+Nesta etapa, foram implementados dispositivos canônicos de sincronização da biblioteca `threading`:
+
+* **Mutex / Locks (`threading.Lock` e `threading.RLock`):**
+  * `lock_metricas`: garante atomicidade e previne *lost updates* nos contadores globais de requisições, atendimentos e starvations.
+  * `lock_atendimentos`: assegura integridade da lista compartilhada de histórico de atendimentos.
+  * `lock_status`: protege os dicionários de status de bebês e cuidadoras contra leituras sujas e exceções de iteração concorrente na TUI e GUI.
+  * `locks_bebes`: exclusão mútua estrita por bebê, garantindo que um bebê só possa ser manipulado por uma única cuidadora por vez.
+
+* **Semáforos Contadores (`threading.Semaphore`):**
+  * `semaforo_estacoes`: gerencia a alocação de recursos físicos finitos do berçário (postos/estações de atendimento simultâneo), exemplificando o controle de capacidade de Dijkstra.
+
+* **Variáveis de Condição / Monitores (`threading.Condition`):**
+  * Utilizado na fila de chamados compartilhada (`Fila` em `escalonamento.py`), coordenando produtores (`put()`) e consumidores (`get()`) com espera bloqueante (`wait_for`) e notificação (`notify()` / `notify_all()`), eliminando o *Check-Then-Act*.
+
+* **Eventos de Sincronização (`threading.Event`):**
+  * `eventos_atendido`: cada bebê possui um evento para sincronização direta com a cuidadora que o atende. A cuidadora sinaliza (`set()`) a conclusão do cuidado, acordando a thread do bebê imediatamente e eliminando completamente a espera ocupada (*busy-waiting*).
 
 ---
 
@@ -38,23 +60,31 @@ Não é necessária a instalação de bibliotecas externas (utiliza apenas os m�
 ### Executando o projeto:
 
 ```bash
-python baby-threads.py <NUM_BEBES> <NUM_CUIDADORAS> <TEMPO_SIMULACAO>
+python baby-threads.py <NUM_BEBES> <NUM_CUIDADORAS> <TEMPO_SIMULACAO> [POLITICA] [--sem-sync]
 ```
 
-**Exemplo:**
+* **Modo Sincronizado (Padrão):**
+  Executa com todos os mecanismos de sincronização ativos (Locks, Semáforos, Condition e Events):
+  ```bash
+  python baby-threads.py 5 2 15 priority
+  ```
 
-```bash
-python baby-threads.py 5 2 15
-```
-
-*(Inicia 5 bebês, 2 cuidadoras rodando por 15 segundos).*
+* **Modo Sem Sincronização (Comparativo / Caos):**
+  Passe a flag `--sem-sync` (ou `--sem-sincronizacao`) para desativar as travas e evidenciar condições de corrida, *check-then-act* e *lost updates*:
+  ```bash
+  python baby-threads.py 5 2 15 priority --sem-sync
+  ```
 
 ### Executando com interface gráfica:
 
-O arquivo `baby-threads-gui.py` abre a mesma simulação em uma janela (Tkinter, nativo do Python), com os mesmos parâmetros:
+O arquivo `baby-threads-gui.py` abre a simulação em janela (Tkinter), suportando as mesmas opções e flags:
 
 ```bash
-python baby-threads-gui.py 5 2 15
+# Modo sincronizado na interface gráfica
+python baby-threads-gui.py 5 2 15 priority
+
+# Modo sem sincronização na interface gráfica (evidencia piscadas e conflitos)
+python baby-threads-gui.py 5 2 15 priority --sem-sync
 ```
 
 A interface **não altera a simulação**: ela importa o `baby-threads.py`, dispara as mesmas threads de bebês e cuidadoras e apenas substitui a thread de renderização em texto. A tela mostra:
