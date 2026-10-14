@@ -99,6 +99,37 @@ Ao final do tempo, o relatório completo é exibido em uma janela e também impr
 
 ---
 
+## Comparação visual das políticas
+
+Para comparar FIFO, SJF e prioridade em uma janela, execute:
+
+```bash
+python comparacao-gui.py
+```
+
+Configure a quantidade de bebês e cuidadoras, a duração de cada execução e o
+número de repetições. O painel executa as seis combinações de política e modo
+de sincronização usando o mesmo motor de `comparacao.py`, sem dependências externas.
+
+* Gráfico de barras com seleção de métrica e cores para os dois modos.
+* Abas com desempenho, problemas de concorrência e espera por necessidade.
+* Progresso e resultados parciais atualizados a cada repetição concluída.
+* Exportação CSV dos resultados individuais pelo botão **Exportar CSV**.
+
+**Parar** conclui a repetição atual antes de interromper. Fechar a janela durante
+uma execução também aguarda essa conclusão. Os gráficos e tabelas mostram médias
+das repetições concluídas; a utilização é estimada e as demandas são aleatórias
+e independentes entre os casos. O botão de exportação permite salvar resultados
+parciais. Uma nova comparação substitui os resultados exibidos.
+
+A versão de terminal continua disponível:
+
+```bash
+python comparacao.py 12 2 20 5
+```
+
+---
+
 ## Integrantes do Grupo
 
 * **Beatriz Vaz Pedroso dos Santos Cobral** - GEC 2082
