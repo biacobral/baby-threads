@@ -53,6 +53,7 @@ COLUNAS = [
     ("espera_p95", "Espera p95", "{:.2f}s", "min"),
     ("espera_max", "Espera máx.", "{:.2f}s", "min"),
     ("starvations", "Starvations", "{:.1f}", "min"),
+    ("mortes_bebes", "Mortes de bebês", "{:.1f}", "min"),
     ("pendentes", "Fila final", "{:.1f}", "min"),
     ("utilizacao", "Utilização", "{:.0%}", None),
 ]
@@ -128,6 +129,8 @@ def coletar(sim, num_cuidadoras, tempo, fim):
         # inclui quem ainda esperava na fila no fim: sem isso a inanição some da conta
         "espera_max": max(esperas + pendentes, default=0.0),
         "starvations": sum(b["starvation_count"] for b in sim.status_bebes.values()),
+        # bebês distintos com ao menos um episódio: um bebê só "morre" uma vez
+        "mortes_bebes": sum(1 for b in sim.status_bebes.values() if b["starvation_count"] > 0),
         "pendentes": len(pendentes),
         "utilizacao": min(1.0, sum(duracao_media(a[1]) for a in atendimentos) / (num_cuidadoras * tempo)),
         "conflitos_fila": sim.metricas["conflitos_fila_pop"],
@@ -181,8 +184,8 @@ def prefixo(caso):
 
 def imprimir_tabela_desempenho(resultados):
     print("Desempenho (o * marca o melhor valor entre as políticas do mesmo modo):")
-    larg = 13
-    cabecalho = f"{'Modo':<10}{'Política':<10}" + "".join(f"{nome:>{larg}}" for _, nome, _, _ in COLUNAS)
+    larg = {chave: max(13, len(nome) + 2) for chave, nome, _, _ in COLUNAS}
+    cabecalho = f"{'Modo':<10}{'Política':<10}" + "".join(f"{nome:>{larg[chave]}}" for chave, nome, _, _ in COLUNAS)
     print(cabecalho)
     print("-" * len(cabecalho))
 
@@ -199,7 +202,7 @@ def imprimir_tabela_desempenho(resultados):
                     alvo = max(todos) if melhor == "max" else min(todos)
                     if max(todos) != min(todos) and round(valor, 2) == alvo:
                         texto += "*"
-                linha += f"{texto:>{larg}}"
+                linha += f"{texto:>{larg[chave]}}"
             print(linha)
         print()
 
