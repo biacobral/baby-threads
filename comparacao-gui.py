@@ -21,6 +21,7 @@ METRICAS = {
     "Espera p95 (s)": ("espera_p95", "Menor é melhor · pedidos concluídos"),
     "Espera máxima (s)": ("espera_max", "Inclui pedidos restantes na fila"),
     "Starvations": ("starvations", "Episódios acima do limite de espera da simulação"),
+    "Mortes de bebês": ("mortes_bebes", "Bebês distintos com pelo menos um episódio de starvation"),
     "Conflitos na fila": ("conflitos_fila", "Menor é melhor · média por execução"),
     "Contadores divergentes": ("contadores_divergentes", "Menor é melhor · soma das diferenças entre contadores"),
 }
@@ -108,7 +109,7 @@ class ComparacaoApp:
         self.tabelas = []
         grupos = [
             ("Desempenho", [("atendidos", "Atendidos"), ("espera_media", "Espera média (s)"), ("espera_p95", "P95 (s)"), ("espera_max", "Máxima (s)"), ("pendentes", "Fila final"), ("utilizacao", "Utilização estim.")]),
-            ("Concorrência", [("conflitos_fila", "Conflitos na fila"), ("contadores_divergentes", "Divergências"), ("starvations", "Starvations")]),
+            ("Concorrência", [("conflitos_fila", "Conflitos na fila"), ("contadores_divergentes", "Divergências"), ("starvations", "Starvations"), ("mortes_bebes", "Mortes de bebês")]),
             ("Necessidades", [(f"espera_{tipo}", f"{tipo.capitalize()} (s)") for tipo in motor.NECESSIDADES]),
         ]
         for titulo, colunas in grupos:
